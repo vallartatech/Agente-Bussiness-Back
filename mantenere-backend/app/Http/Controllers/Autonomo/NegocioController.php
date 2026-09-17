@@ -169,14 +169,23 @@ class NegocioController extends Controller
 
     private function syncLevantamiento(Negocio $negocio, array $areasData): void
     {
-        $incomingAreaIds = collect($areasData)->pluck('id')->filter(fn($id) => is_numeric($id))->toArray();
-        $negocio->areas()->whereNotIn('id', $incomingAreaIds)->delete();
+        $existingAreaIds = $negocio->areas()->pluck('id')->toArray();
+        $keptAreaIds = collect($areasData)->pluck('id')->filter(function($id) use ($existingAreaIds) {
+            return is_numeric($id) && in_array((int)$id, $existingAreaIds);
+        })->map(fn($id) => (int)$id)->toArray();
+
+        $negocio->areas()->whereNotIn('id', $keptAreaIds)->delete();
 
         foreach ($areasData as $areaInput) {
-            $area = (isset($areaInput['id']) && is_numeric($areaInput['id'])) ? $negocio->areas()->find($areaInput['id']) : new \App\Models\LevantamientoArea();
-            if (!$area && isset($areaInput['id']) && is_numeric($areaInput['id'])) continue;
+            $area = null;
+            if (!empty($areaInput['id']) && is_numeric($areaInput['id'])) {
+                $area = $negocio->areas()->find($areaInput['id']);
+            }
+            if (!$area) {
+                $area = new \App\Models\LevantamientoArea();
+            }
 
-            $area->nombreArea = $areaInput['nombreArea'];
+            $area->nombreArea = $areaInput['nombreArea'] ?? 'Área';
             $area->sub_areas_json = collect($areaInput['subAreas'] ?? [])->map(fn($sa) => ['id' => $sa['id'] ?? null, 'nombreSubArea' => $sa['nombreSubArea'] ?? null])->toArray();
             $negocio->areas()->save($area);
 
@@ -192,22 +201,39 @@ class NegocioController extends Controller
             }
             $equiposData = array_values($uniqueEquipos);
 
-            $incomingEqIds = collect($equiposData)->pluck('id')->filter(fn($id) => is_numeric($id))->toArray();
-            $area->equipos()->whereNotIn('id', $incomingEqIds)->delete();
+            $existingEqIds = $area->equipos()->pluck('id')->toArray();
+            $keptEqIds = collect($equiposData)->pluck('id')->filter(function($id) use ($existingEqIds) {
+                return is_numeric($id) && in_array((int)$id, $existingEqIds);
+            })->map(fn($id) => (int)$id)->toArray();
+
+            $area->equipos()->whereNotIn('id', $keptEqIds)->delete();
 
             foreach ($equiposData as $eqInput) {
-                $equipo = (isset($eqInput['id']) && is_numeric($eqInput['id'])) ? $area->equipos()->find($eqInput['id']) : new \App\Models\LevantamientoEquipo();
-                if (!$equipo && isset($eqInput['id']) && is_numeric($eqInput['id'])) continue;
+                $equipo = null;
+                if (!empty($eqInput['id']) && is_numeric($eqInput['id'])) {
+                    $equipo = $area->equipos()->find($eqInput['id']);
+                }
+                if (!$equipo) {
+                    $equipo = new \App\Models\LevantamientoEquipo();
+                }
+
                 $catId = (!empty($eqInput['categoria_id']) && is_numeric($eqInput['categoria_id']))
                     ? (int)$eqInput['categoria_id']
                     : null;
+
                 $equipo->fill([
-                    'nombre' => $eqInput['nombre'], 'marca' => $eqInput['marca'],
-                    'modelo' => $eqInput['modelo'], 'serie' => $eqInput['serie'] ?? null,
-                    'anioFabricacion' => $eqInput['anioFabricacion'] ?? null, 'anioUso' => $eqInput['anioUso'] ?? null,
-                    'foto' => $eqInput['foto'] ?? null, 'fotoPlaca' => $eqInput['fotoPlaca'] ?? null,
-                    'categoria_id' => $catId, 'subAreaId' => $eqInput['subAreaId'] ?? null,
-                    'nombreSubArea' => $eqInput['nombreSubArea'] ?? null, 'subCategoria' => $eqInput['subCategoria'] ?? null,
+                    'nombre' => $eqInput['nombre'] ?? 'Equipo',
+                    'marca' => $eqInput['marca'] ?? '',
+                    'modelo' => $eqInput['modelo'] ?? '',
+                    'serie' => $eqInput['serie'] ?? null,
+                    'anioFabricacion' => $eqInput['anioFabricacion'] ?? null,
+                    'anioUso' => $eqInput['anioUso'] ?? null,
+                    'foto' => $eqInput['foto'] ?? null,
+                    'fotoPlaca' => $eqInput['fotoPlaca'] ?? null,
+                    'categoria_id' => $catId,
+                    'subAreaId' => $eqInput['subAreaId'] ?? null,
+                    'nombreSubArea' => $eqInput['nombreSubArea'] ?? null,
+                    'subCategoria' => $eqInput['subCategoria'] ?? null,
                 ]);
                 $area->equipos()->save($equipo);
             }

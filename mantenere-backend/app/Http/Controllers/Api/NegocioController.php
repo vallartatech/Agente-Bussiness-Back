@@ -181,23 +181,26 @@ class NegocioController extends Controller
         if ($request->has('levantamiento')) {
             $areasData = $request->input('levantamiento', []);
             
-            // 1. Recolectar IDs de áreas que llegan para no borrarlas
-            $incomingAreaIds = collect($areasData)->pluck('id')->filter(function($id) {
-                return is_numeric($id); // Solo IDs válidos, los nuevos traen strings como "1689..."
-            })->toArray();
+            // 1. Recolectar IDs existentes en BD para no borrar por error IDs temporales del frontend
+            $existingAreaIds = $negocio->areas()->pluck('id')->toArray();
+            $keptAreaIds = collect($areasData)->pluck('id')->filter(function($id) use ($existingAreaIds) {
+                return is_numeric($id) && in_array((int)$id, $existingAreaIds);
+            })->map(fn($id) => (int)$id)->toArray();
 
-            // Borramos áreas que ya no existen en el request
-            $negocio->areas()->whereNotIn('id', $incomingAreaIds)->delete();
+            // Borramos áreas que existían en BD pero ya no vienen en el request
+            $negocio->areas()->whereNotIn('id', $keptAreaIds)->delete();
 
             foreach ($areasData as $areaInput) {
-                // Si el ID es texto (generado en frontend como Date.now()), creamos una nueva
-                $area = is_numeric($areaInput['id']) 
-                    ? $negocio->areas()->find($areaInput['id']) 
-                    : new \App\Models\LevantamientoArea();
+                // Si el ID existe en BD lo buscamos, si no (nuevo con ID tipo Date.now()), creamos una nueva
+                $area = null;
+                if (!empty($areaInput['id']) && is_numeric($areaInput['id'])) {
+                    $area = $negocio->areas()->find($areaInput['id']);
+                }
+                if (!$area) {
+                    $area = new \App\Models\LevantamientoArea();
+                }
 
-                if (!$area && is_numeric($areaInput['id'])) continue;
-
-                $area->nombreArea = $areaInput['nombreArea'];
+                $area->nombreArea = $areaInput['nombreArea'] ?? 'Área';
 
                 $cleanSubAreas = [];
                 if (isset($areaInput['subAreas']) && is_array($areaInput['subAreas'])) {
@@ -233,27 +236,30 @@ class NegocioController extends Controller
                 }
                 $equiposData = array_values($uniqueEquipos);
                 
-                $incomingEqIds = collect($equiposData)->pluck('id')->filter(function($id) {
-                    return is_numeric($id);
-                })->toArray();
+                $existingEqIds = $area->equipos()->pluck('id')->toArray();
+                $keptEqIds = collect($equiposData)->pluck('id')->filter(function($id) use ($existingEqIds) {
+                    return is_numeric($id) && in_array((int)$id, $existingEqIds);
+                })->map(fn($id) => (int)$id)->toArray();
 
-                $area->equipos()->whereNotIn('id', $incomingEqIds)->delete();
+                $area->equipos()->whereNotIn('id', $keptEqIds)->delete();
 
                 foreach ($equiposData as $eqInput) {
-                    $equipo = (isset($eqInput['id']) && is_numeric($eqInput['id'])) 
-                        ? $area->equipos()->find($eqInput['id']) 
-                        : new \App\Models\LevantamientoEquipo();
-
-                    if (!$equipo && isset($eqInput['id']) && is_numeric($eqInput['id'])) continue;
+                    $equipo = null;
+                    if (!empty($eqInput['id']) && is_numeric($eqInput['id'])) {
+                        $equipo = $area->equipos()->find($eqInput['id']);
+                    }
+                    if (!$equipo) {
+                        $equipo = new \App\Models\LevantamientoEquipo();
+                    }
 
                     $catId = (!empty($eqInput['categoria_id']) && is_numeric($eqInput['categoria_id']))
                         ? (int)$eqInput['categoria_id']
                         : null;
 
                     $equipo->fill([
-                        'nombre' => $eqInput['nombre'],
-                        'marca' => $eqInput['marca'],
-                        'modelo' => $eqInput['modelo'],
+                        'nombre' => $eqInput['nombre'] ?? 'Equipo',
+                        'marca' => $eqInput['marca'] ?? '',
+                        'modelo' => $eqInput['modelo'] ?? '',
                         'serie' => $eqInput['serie'] ?? null,
                         'anioFabricacion' => $eqInput['anioFabricacion'] ?? null,
                         'anioUso' => $eqInput['anioUso'] ?? null,

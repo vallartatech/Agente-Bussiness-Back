@@ -21,7 +21,11 @@ use App\Http\Controllers\Api\TrabajoController;
 use App\Http\Controllers\Api\TrabajadorController;
 
 // ── HEALTH CHECK ─────────────────────────────────────────────────────────────
-Route::get('/ping', fn() => response()->json(['pong' => true]));
+Route::get('/ping', fn() => response()->json([
+    'pong' => true,
+    'deploy_version' => 'force-deploy-1',
+    'time' => date('Y-m-d H:i:s'),
+]));
 
 // ── AUTH (público) ────────────────────────────────────────────────────────────
 Route::post('/login',           [AuthController::class, 'login']);
