@@ -161,7 +161,7 @@ class MantenimientoSolicitudController extends Controller
     // GET /api/mantenimiento-solicitudes/{id} (Ver detalle)
     public function show($id)
     {
-        $solicitud = MantenimientoSolicitud::with(['cliente', 'negocio', 'levantamientoEquipo', 'visitaTrabajo', 'reparacionTrabajo', 'visitas.tecnico', 'reportes.tecnico'])->find($id);
+        $solicitud = MantenimientoSolicitud::with(['cliente', 'negocio', 'levantamientoEquipo', 'trabajador.user', 'visitaTrabajo.trabajador.user', 'reparacionTrabajo.trabajador.user', 'visitas.tecnico', 'reportes.tecnico'])->find($id);
 
         if (!$solicitud) {
             return response()->json(['message' => 'Solicitud no encontrada'], 404);
@@ -203,11 +203,11 @@ class MantenimientoSolicitudController extends Controller
             'titulo' => 'Mantenimiento (Visita): ' . ($solicitud->levantamientoEquipo->nombre ?? 'Equipo'),
             'descripcion' => "Revisión y diagnóstico.\nProblema reportado: " . $solicitud->descripcion_problema,
             'fecha_programada' => $request->fecha_programada,
-            'hora_programada' => $request->hora_programada,
+            'fechaAsignada' => $request->fecha_programada,
+            'horaAsignada' => $request->hora_programada,
             'trabajador_id' => $trabajador->id,
             'negocio_id' => $solicitud->negocio_id,
             'estado' => 'Asignado',
-            'user_id' => $request->tecnico_id,
             'prioridad' => 'Media',
             'tipo' => 'Visita',
             'visitado' => false,
@@ -216,17 +216,23 @@ class MantenimientoSolicitudController extends Controller
         // Actualizar solicitud
         $solicitud->estado = 'Visita Asignada';
         $solicitud->visita_trabajo_id = $trabajo->id;
+        $solicitud->trabajador_id = $trabajador->id;
         $solicitud->save();
 
         // Notificar al Técnico
-        Notificacion::create([
-            'user_id' => $request->tecnico_id,
-            'titulo' => 'Nueva Visita de Mantenimiento',
-            'mensaje' => 'Se te ha asignado una visita para el equipo: ' . ($solicitud->levantamientoEquipo->nombre ?? 'Equipo'),
-            'tipo' => 'mantenimiento',
-            'enlace' => '/tecnico/trabajo-detalle/' . $trabajo->id,
-            'leido' => false,
-        ]);
+        try {
+            $notif = Notificacion::create([
+                'user_id' => $request->tecnico_id,
+                'titulo' => 'Nueva Visita de Mantenimiento 🛠️',
+                'mensaje' => 'Se te ha asignado una visita para el equipo: ' . ($solicitud->levantamientoEquipo->nombre ?? 'Equipo'),
+                'tipo' => 'mantenimiento',
+                'enlace' => '/tecnico/trabajo-detalle/' . $trabajo->id,
+                'leido' => false,
+            ]);
+            broadcast(new \App\Events\NotificationSent($notif));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Error creating/broadcasting notif: " . $e->getMessage());
+        }
 
         return response()->json([
             'message' => 'Visita asignada y notificada correctamente',
@@ -271,11 +277,11 @@ class MantenimientoSolicitudController extends Controller
             'titulo' => 'Mantenimiento (Reparación): ' . ($solicitud->levantamientoEquipo->nombre ?? 'Equipo'),
             'descripcion' => "Reparación tras cotización aprobada.\nProblema reportado: " . $solicitud->descripcion_problema,
             'fecha_programada' => $request->fecha_programada,
-            'hora_programada' => $request->hora_programada,
+            'fechaAsignada' => $request->fecha_programada,
+            'horaAsignada' => $request->hora_programada,
             'trabajador_id' => $trabajador->id,
             'negocio_id' => $solicitud->negocio_id,
             'estado' => 'Asignado',
-            'user_id' => $request->tecnico_id,
             'prioridad' => 'Alta', // Alta hace que en el frontend actúe como SOS (Alerta)
             'tipo' => 'Trabajo',
             'visitado' => false,
@@ -284,21 +290,143 @@ class MantenimientoSolicitudController extends Controller
         // Actualizar solicitud con el ESTADO ENUM CORRECTO: "Trabajo Asignado"
         $solicitud->estado = 'Trabajo Asignado';
         $solicitud->reparacion_trabajo_id = $trabajo->id;
+        $solicitud->trabajador_id = $trabajador->id;
         $solicitud->save();
 
         // Notificar al Técnico
-        Notificacion::create([
-            'user_id' => $request->tecnico_id,
-            'titulo' => 'Nuevo Trabajo de Reparación',
-            'mensaje' => 'Se te ha asignado un trabajo de mantenimiento para el equipo: ' . ($solicitud->levantamientoEquipo->nombre ?? 'Equipo'),
-            'tipo' => 'Nuevo Trabajo',
-            'referencia_id' => $trabajo->id,
-            'referencia_tipo' => 'trabajo',
-        ]);
+        try {
+            $notif = Notificacion::create([
+                'user_id' => $request->tecnico_id,
+                'titulo' => 'Nuevo Trabajo de Reparación 🛠️',
+                'mensaje' => 'Se te ha asignado un trabajo de mantenimiento para el equipo: ' . ($solicitud->levantamientoEquipo->nombre ?? 'Equipo'),
+                'tipo' => 'mantenimiento',
+                'enlace' => '/tecnico/trabajo-detalle/' . $trabajo->id,
+                'leido' => false,
+            ]);
+            broadcast(new \App\Events\NotificationSent($notif));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Error creating/broadcasting notif: " . $e->getMessage());
+        }
 
         return response()->json([
             'message' => 'Trabajo de reparación asignado y notificado correctamente',
             'trabajo' => $trabajo
         ]);
     }
+
+    // POST /api/mantenimiento-solicitudes/{id}/actualizar-asignacion
+    public function actualizarAsignacion($id, Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'tecnico_id' => 'required|exists:users,id',
+            'fecha_programada' => 'required|date',
+            'hora_programada' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $solicitud = MantenimientoSolicitud::with(['levantamientoEquipo', 'visitaTrabajo', 'reparacionTrabajo'])->find($id);
+
+        if (!$solicitud) {
+            return response()->json(['message' => 'Solicitud no encontrada'], 404);
+        }
+
+        $trabajador = \App\Models\Trabajador::where('user_id', $request->tecnico_id)->first();
+        if (!$trabajador) {
+            return response()->json(['message' => 'El técnico seleccionado no existe como trabajador.'], 400);
+        }
+
+        $trabajo = null;
+        if ($solicitud->estado === 'Visita Asignada' && $solicitud->visitaTrabajo) {
+            $trabajo = $solicitud->visitaTrabajo;
+        } elseif (($solicitud->estado === 'Reparación Asignada' || $solicitud->estado === 'Trabajo Asignado') && $solicitud->reparacionTrabajo) {
+            $trabajo = $solicitud->reparacionTrabajo;
+        }
+
+        if (!$trabajo) {
+            return response()->json(['message' => 'No hay un trabajo activo para actualizar en esta solicitud.'], 400);
+        }
+
+        // Actualizar el trabajo en la BD
+        $trabajo->trabajador_id = $trabajador->id;
+        $trabajo->fecha_programada = $request->fecha_programada;
+        $trabajo->fechaAsignada = $request->fecha_programada;
+        if ($request->filled('hora_programada')) {
+            $trabajo->horaAsignada = $request->hora_programada;
+        }
+        $trabajo->save();
+
+        $solicitud->trabajador_id = $trabajador->id;
+        $solicitud->save();
+
+        // Notificar al nuevo técnico
+        try {
+            $notif = Notificacion::create([
+                'user_id' => $request->tecnico_id,
+                'titulo' => 'Asignación Actualizada 🛠️',
+                'mensaje' => 'Se te ha reasignado el trabajo/visita para el equipo: ' . ($solicitud->levantamientoEquipo->nombre ?? 'Equipo'),
+                'tipo' => 'mantenimiento',
+                'enlace' => '/tecnico/trabajo-detalle/' . $trabajo->id,
+                'leido' => false,
+            ]);
+            broadcast(new \App\Events\NotificationSent($notif));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Error creating/broadcasting notif: " . $e->getMessage());
+        }
+
+        return response()->json([
+            'message' => 'Asignación de técnico actualizada exitosamente',
+            'trabajo' => $trabajo,
+            'solicitud' => $solicitud->fresh(['cliente', 'negocio', 'levantamientoEquipo', 'trabajador.user', 'visitaTrabajo.trabajador.user', 'reparacionTrabajo.trabajador.user'])
+        ]);
+    }
+
+    // POST /api/mantenimiento-solicitudes/{id}/cancelar-asignacion
+    public function cancelarAsignacion($id)
+    {
+        $solicitud = MantenimientoSolicitud::with(['visitaTrabajo', 'reparacionTrabajo'])->find($id);
+
+        if (!$solicitud) {
+            return response()->json(['message' => 'Solicitud no encontrada'], 404);
+        }
+
+        if ($solicitud->visita_trabajo_id && $solicitud->estado === 'Visita Asignada') {
+            $trabajo = $solicitud->visitaTrabajo;
+            $solicitud->visita_trabajo_id = null;
+            $solicitud->trabajador_id = null;
+            $solicitud->estado = 'Pendiente';
+            $solicitud->save();
+
+            if ($trabajo) {
+                $trabajo->delete();
+            }
+
+            return response()->json([
+                'message' => 'Asignación de visita cancelada exitosamente. La solicitud vuelve a estar Pendiente.',
+                'solicitud' => $solicitud->fresh(['cliente', 'negocio', 'levantamientoEquipo', 'visitaTrabajo', 'reparacionTrabajo'])
+            ]);
+        }
+
+        if ($solicitud->reparacion_trabajo_id && ($solicitud->estado === 'Reparación Asignada' || $solicitud->estado === 'Trabajo Asignado')) {
+            $trabajo = $solicitud->reparacionTrabajo;
+            $solicitud->reparacion_trabajo_id = null;
+            $solicitud->trabajador_id = null;
+            $solicitud->estado = 'Cotización Aceptada';
+            $solicitud->save();
+
+            if ($trabajo) {
+                $trabajo->delete();
+            }
+
+            return response()->json([
+                'message' => 'Asignación de reparación cancelada exitosamente.',
+                'solicitud' => $solicitud->fresh(['cliente', 'negocio', 'levantamientoEquipo', 'visitaTrabajo', 'reparacionTrabajo'])
+            ]);
+        }
+
+        return response()->json(['message' => 'La solicitud no tiene una asignación activa que pueda cancelarse.'], 400);
+    }
+
 }

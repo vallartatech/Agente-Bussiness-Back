@@ -18,6 +18,7 @@ class MantenimientoSolicitud extends Model
         'levantamiento_equipo_id',
         'descripcion_problema',
         'estado',
+        'trabajador_id',
         'visita_trabajo_id',
         'reparacion_trabajo_id',
         'admin_cotizacion',
@@ -42,6 +43,11 @@ class MantenimientoSolicitud extends Model
     public function levantamientoEquipo()
     {
         return $this->belongsTo(LevantamientoEquipo::class);
+    }
+
+    public function trabajador()
+    {
+        return $this->belongsTo(Trabajador::class, 'trabajador_id');
     }
 
     public function visitaTrabajo()

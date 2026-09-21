@@ -6,7 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 
 class TrabajoChat extends Model
 {
-    protected $fillable = ['trabajo_id', 'sender_id', 'message'];
+    protected $fillable = [
+        'trabajo_id',
+        'canal',
+        'sender_id',
+        'message',
+        'is_quote',
+        'quote_amount'
+    ];
 
     public function sender()
     {

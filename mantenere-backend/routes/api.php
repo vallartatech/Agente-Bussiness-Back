@@ -84,6 +84,10 @@ Route::middleware(['auth:sanctum', 'base.role'])->prefix('base')->group(function
     Route::get  ('mantenimiento-solicitudes/{id}',                    [MantenimientoSolicitudController::class, 'show']);
     Route::post ('mantenimiento-solicitudes/{id}/asignar-visita',     [MantenimientoSolicitudController::class, 'asignarVisita']);
     Route::post ('mantenimiento-solicitudes/{id}/asignar-reparacion', [MantenimientoSolicitudController::class, 'asignarReparacion']);
+    Route::post ('mantenimiento-solicitudes/{id}/actualizar-asignacion', [MantenimientoSolicitudController::class, 'actualizarAsignacion']);
+    Route::post ('mantenimiento-solicitudes/{id}/cancelar-asignacion',   [MantenimientoSolicitudController::class, 'cancelarAsignacion']);
+    Route::post ('mantenimiento-solicitudes/{id}/actualizar-asignacion', [MantenimientoSolicitudController::class, 'actualizarAsignacion']);
+    Route::post ('mantenimiento-solicitudes/{id}/cancelar-asignacion',   [MantenimientoSolicitudController::class, 'cancelarAsignacion']);
 
     // 📋 Solicitudes proveedor
     Route::post('tecnico/solicitar-proveedor',             [SolicitudProveedorController::class, 'store']);
@@ -230,6 +234,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get  ('mantenimiento-solicitudes/{id}',                    [MantenimientoSolicitudController::class, 'show']);
     Route::post ('mantenimiento-solicitudes/{id}/asignar-visita',     [MantenimientoSolicitudController::class, 'asignarVisita']);
     Route::post ('mantenimiento-solicitudes/{id}/asignar-reparacion', [MantenimientoSolicitudController::class, 'asignarReparacion']);
+    Route::post ('mantenimiento-solicitudes/{id}/actualizar-asignacion', [MantenimientoSolicitudController::class, 'actualizarAsignacion']);
+    Route::post ('mantenimiento-solicitudes/{id}/cancelar-asignacion',   [MantenimientoSolicitudController::class, 'cancelarAsignacion']);
 });
 
 // Servir archivos de storage local
