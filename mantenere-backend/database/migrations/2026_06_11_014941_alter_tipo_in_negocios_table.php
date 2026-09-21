@@ -11,8 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Alter table using raw DB statement to avoid enum to string doctrine issues
-        \Illuminate\Support\Facades\DB::statement("ALTER TABLE negocios MODIFY COLUMN tipo VARCHAR(255) DEFAULT 'FC'");
+        if (\Illuminate\Support\Facades\DB::getDriverName() === 'mysql') {
+            \Illuminate\Support\Facades\DB::statement("ALTER TABLE negocios MODIFY COLUMN tipo VARCHAR(255) DEFAULT 'FC'");
+        } else {
+            Schema::table('negocios', function (Blueprint $table) {
+                $table->string('tipo', 255)->default('FC')->change();
+            });
+        }
     }
 
     /**
@@ -20,6 +25,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        \Illuminate\Support\Facades\DB::statement("ALTER TABLE negocios MODIFY COLUMN tipo ENUM('FC', 'FS', 'MALL', 'W/M') DEFAULT 'FC'");
+        if (\Illuminate\Support\Facades\DB::getDriverName() === 'mysql') {
+            \Illuminate\Support\Facades\DB::statement("ALTER TABLE negocios MODIFY COLUMN tipo ENUM('FC', 'FS', 'MALL', 'W/M') DEFAULT 'FC'");
+        }
     }
 };

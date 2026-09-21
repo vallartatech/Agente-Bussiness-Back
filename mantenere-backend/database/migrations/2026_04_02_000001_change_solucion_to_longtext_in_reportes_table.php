@@ -11,7 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        \Illuminate\Support\Facades\DB::statement('ALTER TABLE reportes MODIFY solucion LONGTEXT');
+        if (\Illuminate\Support\Facades\DB::getDriverName() === 'mysql') {
+            \Illuminate\Support\Facades\DB::statement('ALTER TABLE reportes MODIFY solucion LONGTEXT');
+        } else {
+            Schema::table('reportes', function (Blueprint $table) {
+                $table->longText('solucion')->nullable()->change();
+            });
+        }
     }
 
     /**

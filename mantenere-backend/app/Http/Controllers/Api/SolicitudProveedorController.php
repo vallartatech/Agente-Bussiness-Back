@@ -95,7 +95,7 @@ class SolicitudProveedorController extends Controller
         ]);
 
         // Notificar al Admin Normal
-        $adminRole = Role::whereIn('name', ['admin', 'root'])->first();
+        $adminRole = Role::whereIn('name', ['admin', 'root', 'Admin', 'Root'])->first();
         if ($adminRole) {
             $admins = User::where('role_id', $adminRole->id)->get();
             foreach ($admins as $admin) {

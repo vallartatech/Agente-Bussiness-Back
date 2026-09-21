@@ -91,10 +91,10 @@ class AuthController extends Controller
             'password' => 'required|string|min:6|confirmed',
         ]);
 
-        $clienteRole = \App\Models\Role::where('name', 'cliente')->first();
+        $clienteRole = \App\Models\Role::whereRaw('LOWER(name) = ?', ['cliente'])->first();
         $roleId = $clienteRole ? $clienteRole->id : null;
 
-        if (!$roleId) {
+        if (!$roleId && $roleId !== 0) {
             return response()->json(['message' => 'Rol de cliente no encontrado en el sistema'], 500);
         }
 

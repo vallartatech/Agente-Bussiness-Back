@@ -19,8 +19,8 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(RoleSeeder::class);
 
-        $rootRole = Role::where('name', 'root')->first();
-        $adminRole = Role::where('name', 'Admin')->first();
+        $rootRole = Role::whereIn('name', ['root', 'Root'])->first();
+        $adminRole = Role::whereIn('name', ['admin', 'Admin'])->first();
 
         if ($rootRole) {
             User::updateOrCreate(

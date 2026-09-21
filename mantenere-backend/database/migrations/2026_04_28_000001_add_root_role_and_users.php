@@ -16,22 +16,30 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Desactivar FK checks para poder insertar id=0 sin conflictos
-        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-        // Permitir id=0 en columnas AUTO_INCREMENT de MySQL
-        DB::statement("SET SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO';");
+        $isMysql = DB::getDriverName() === 'mysql';
+        if ($isMysql) {
+            // Desactivar FK checks para poder insertar id=0 sin conflictos
+            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+            // Permitir id=0 en columnas AUTO_INCREMENT de MySQL
+            DB::statement("SET SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO';");
+        }
 
         // 1. Insertar el rol Root con id=0 (solo si no existe)
         $exists = DB::table('roles')->where('id', 0)->exists();
         if (!$exists) {
-            DB::statement("
-                INSERT INTO roles (id, name, hierarchy_level, created_at, updated_at)
-                VALUES (0, 'Root', 0, NOW(), NOW())
-            ");
+            DB::table('roles')->insert([
+                'id'              => 0,
+                'name'            => 'Root',
+                'hierarchy_level' => 0,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ]);
         }
 
-        // Reactivar FK checks antes de tocar usuarios
-        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+        if ($isMysql) {
+            // Reactivar FK checks antes de tocar usuarios
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+        }
 
         // 2. Asegurarse de que el rol Admin (id=1) existe antes de usarlo
         //    (en un fresh migrate los seeders no han corrido todavía)
