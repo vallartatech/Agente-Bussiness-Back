@@ -7,12 +7,21 @@ use Illuminate\Http\Request;
 
 class ChatController extends Controller
 {
-    public function index($trabajoId)
+    public function index(Request $request, $trabajoId)
     {
-        $chats = \App\Models\TrabajoChat::with('sender:id,name,role_id')->where('trabajo_id', $trabajoId)->orderBy('created_at', 'asc')->get();
+        $query = \App\Models\TrabajoChat::with('sender:id,name,role_id')->where('trabajo_id', $trabajoId);
+
+        if ($request->filled('canal')) {
+            $query->where('canal', $request->canal);
+        }
+
+        $chats = $query->orderBy('created_at', 'asc')->get();
+
         // Cargar role
         $chats->each(function($chat) {
-            $chat->sender->load('role:id,name');
+            if ($chat->sender) {
+                $chat->sender->load('role:id,name');
+            }
         });
         return response()->json($chats);
     }
@@ -27,12 +36,16 @@ class ChatController extends Controller
     {
         $request->validate([
             'message' => 'required|string',
+            'canal' => 'nullable|string',
             'is_quote' => 'boolean',
             'quote_amount' => 'numeric|nullable'
         ]);
 
+        $canal = $request->input('canal', 'cliente_admin');
+
         $chat = \App\Models\TrabajoChat::create([
             'trabajo_id' => $trabajoId,
+            'canal' => $canal,
             'sender_id' => $request->user()->id,
             'message' => $request->message,
             'is_quote' => $request->boolean('is_quote', false),
@@ -40,7 +53,9 @@ class ChatController extends Controller
         ]);
 
         $chat->load('sender:id,name,role_id');
-        $chat->sender->load('role:id,name');
+        if ($chat->sender) {
+            $chat->sender->load('role:id,name');
+        }
 
         // Transmitir mensaje por WebSockets
         broadcast(new \App\Events\ChatMessageSent($chat));
@@ -69,7 +84,6 @@ class ChatController extends Controller
             $usersToNotify[] = $trabajo->admin_autonomo_id;
         }
 
-
         foreach ($usersToNotify as $uid) {
             $notif = \App\Models\Notificacion::create([
                 'user_id' => $uid,
@@ -89,6 +103,7 @@ class ChatController extends Controller
     {
         $request->validate([
             'action' => 'required|in:accept,reject',
+            'canal' => 'nullable|string',
             'reason' => 'nullable|string'
         ]);
 
@@ -103,8 +118,11 @@ class ChatController extends Controller
             $message = 'Ha rechazado la propuesta. Motivo: ' . $request->reason;
         }
 
+        $canal = $request->input('canal', 'cliente_admin');
+
         $chat = \App\Models\TrabajoChat::create([
             'trabajo_id' => $trabajoId,
+            'canal' => $canal,
             'sender_id' => $user->id,
             'message' => $message,
             'is_quote' => false,
@@ -112,7 +130,9 @@ class ChatController extends Controller
         ]);
 
         $chat->load('sender:id,name,role_id');
-        $chat->sender->load('role:id,name');
+        if ($chat->sender) {
+            $chat->sender->load('role:id,name');
+        }
 
         broadcast(new \App\Events\ChatMessageSent($chat));
 
