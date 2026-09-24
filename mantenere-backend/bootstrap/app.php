@@ -18,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
 
     ->withMiddleware(function (Middleware $middleware) {
+        // CORS debe estar primero, antes de cualquier otro middleware
+        $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
+
         $middleware->alias([
             'role.hierarchy' => CheckRoleHierarchy::class,
             'base.role'      => EnsureBaseRole::class,
