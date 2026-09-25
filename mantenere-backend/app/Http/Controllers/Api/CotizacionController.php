@@ -75,7 +75,7 @@ class CotizacionController extends Controller
         }
     }
 
-    // ✏️ 3. Editar una cotización existente (Admin)
+    // ✏️ 3. Editar una cotización existente (Admin o Cliente)
     public function update(Request $request, $id)
     {
         $cotizacion = Cotizacion::find($id);
@@ -86,6 +86,7 @@ class CotizacionController extends Controller
 
         $request->validate([
             'monto'   => 'sometimes|numeric',
+            'estado'  => 'sometimes|in:Pendiente,Aprobada,Rechazada',
             'archivo' => 'nullable|file|max:10240',
         ]);
 
@@ -94,11 +95,32 @@ class CotizacionController extends Controller
             $pathArchivo = $request->file('archivo')->store('cotizaciones', 'public');
         }
 
-        $cotizacion->update([
+        $updateData = [
             'descripcion' => $request->descripcion ?? $cotizacion->descripcion,
             'monto'       => $request->monto ?? $cotizacion->monto,
             'archivo'     => $pathArchivo,
-        ]);
+        ];
+        if ($request->has('estado')) {
+            $updateData['estado'] = $request->estado;
+        }
+
+        $cotizacion->update($updateData);
+
+        if ($request->estado === 'Aprobada') {
+            $trabajo = \App\Models\Trabajo::find($cotizacion->trabajo_id);
+            if ($trabajo) {
+                $trabajo->estado = 'Cotización Aprobada';
+                $trabajo->trabajador_id = null;
+                $trabajo->visitado = false;
+                $trabajo->save();
+
+                $mantenimiento = \App\Models\MantenimientoSolicitud::where('visita_trabajo_id', $trabajo->id)->first();
+                if ($mantenimiento) {
+                    $mantenimiento->estado = 'Cotización Aceptada';
+                    $mantenimiento->save();
+                }
+            }
+        }
 
         return response()->json([
             'message' => 'Cotización actualizada correctamente.',
